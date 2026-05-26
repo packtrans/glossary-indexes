@@ -1,10 +1,10 @@
 name: Build glossary indexes
 
 on:
+  workflow_dispatch:
   schedule:
     # UTC 00:00 on the 1st of every month
     - cron: "0 0 1 * *"
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -72,12 +72,10 @@ jobs:
           BUILD_DATE: ${{ steps.date.outputs.date }}
         run: |
           set -euo pipefail
-          dict_path="${XDG_DATA_HOME}/packtrans-glossary/dictionaries"
           mkdir -p dist indexes
           while IFS= read -r lang; do
             packtrans-glossary-builder \
               --index-path indexes \
-              --dict-path "$dict_path" \
               index --scan-dir res --lang "$lang"
             archive="dist/packtrans-glossary-index-${lang}-${BUILD_DATE}.zip"
             (cd indexes && zip -qr "../${archive}" "$lang")
