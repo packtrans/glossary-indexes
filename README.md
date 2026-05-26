@@ -14,4 +14,4 @@ After the workflow is on the default branch, run it from **Actions → Build glo
 
 ## CI secrets
 
-The [build workflow](.github/workflows/build-indexes.yml) requires `CURSEFORGE_API_KEY` for CurseForge mod list and download steps.
+The [build workflow](.github/workflows/build-indexes.yml) requires `CURSEFORGE_API_KEY` only for the CurseForge `create-mod-list` step. Language file downloads use public endpoints and do not need the key.
