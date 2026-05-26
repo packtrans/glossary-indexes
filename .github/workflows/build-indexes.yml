@@ -71,63 +71,84 @@ jobs:
           set -euo pipefail
           mkdir -p res "${PACKTRANS_TEMP}/mods" "${PACKTRANS_TEMP}/minecraft"
 
-          clean_stale_mod_jars() {
-            local platform="$1"
-            local list_file="$2"
-            local mods_dir="${PACKTRANS_TEMP}/mods"
-            [[ -d "$mods_dir" ]] || return 0
+          clean_jar_cache() {
+            python3 <<'PY'
+          import json
+          import os
+          import shutil
+          import textwrap
+          import urllib.request
+          from pathlib import Path
 
-            while IFS=$'\t' read -r slug version_id; do
-              [[ -n "$slug" && -n "$version_id" ]] || continue
-              local prefix="${platform}-${slug}-"
-              local keep="${mods_dir}/${platform}-${slug}-${version_id}.jar"
-              shopt -s nullglob
-              for jar in "${mods_dir}/${prefix}"*.jar; do
-                if [[ "$jar" != "$keep" ]]; then
-                  echo "Removing stale jar: ${jar}"
-                  rm -f "$jar"
-                  rm -rf "${jar%.jar}"
-                fi
-              done
-              shopt -u nullglob
-            done < <(jq -r '.[] | [.slug, .version_id] | @tsv' "$list_file")
+          exec(textwrap.dedent("""
+          PLATFORMS = ("modrinth", "curseforge")
+          temp = Path(os.environ["PACKTRANS_TEMP"])
+          mods_dir = temp / "mods"
+          minecraft_dir = temp / "minecraft"
+          mod_lists = [
+              ("modrinth", Path("modrinth-mods.json")),
+              ("curseforge", Path("curseforge-mods.json")),
+          ]
+
+          def remove_path(path: Path) -> None:
+              if path.is_dir():
+                  shutil.rmtree(path)
+              elif path.exists():
+                  path.unlink()
+              print(f"Removing stale cache: {path}")
+
+          keep_jars: set[str] = set()
+          for platform, list_path in mod_lists:
+              if not list_path.is_file():
+                  continue
+              with list_path.open(encoding="utf-8") as handle:
+                  mods = json.load(handle)
+              for mod in mods:
+                  slug = mod.get("slug")
+                  version_id = mod.get("version_id")
+                  if not slug or not version_id:
+                      continue
+                  keep_jars.add(f"{platform}-{slug}-{version_id}.jar")
+
+          if mods_dir.is_dir():
+              for jar in mods_dir.glob("*.jar"):
+                  name = jar.name
+                  if name in keep_jars:
+                      continue
+                  if any(name.startswith(f"{platform}-") for platform in PLATFORMS):
+                      remove_path(jar)
+                      remove_path(mods_dir / jar.stem)
+
+          if minecraft_dir.is_dir():
+              with urllib.request.urlopen(
+                  "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json"
+              ) as response:
+                  manifest = json.load(response)
+              latest = manifest["latest"]["release"]
+              keep_client = f"client-{latest}.jar"
+              for jar in minecraft_dir.glob("client-*.jar"):
+                  if jar.name != keep_client:
+                      remove_path(jar)
+          """))
+          PY
           }
 
-          clean_stale_minecraft_jars() {
-            local minecraft_dir="${PACKTRANS_TEMP}/minecraft"
-            [[ -d "$minecraft_dir" ]] || return 0
-            local latest
-            latest="$(curl -fsSL https://launchermeta.mojang.com/mc/game/version_manifest_v2.json \
-              | jq -r '.latest.release')"
-            local keep="${minecraft_dir}/client-${latest}.jar"
-            shopt -s nullglob
-            for jar in "${minecraft_dir}"/client-*.jar; do
-              if [[ "$jar" != "$keep" ]]; then
-                echo "Removing stale jar: ${jar}"
-                rm -f "$jar"
-              fi
-            done
-            shopt -u nullglob
-          }
-
-          clean_stale_mod_jars modrinth modrinth-mods.json
-          clean_stale_mod_jars curseforge curseforge-mods.json
-          clean_stale_minecraft_jars
+          clean_jar_cache
 
           # Mod downloads may exit 1 when a mod has no language files; that is expected.
           packtrans-glossary-builder download --platform modrinth --output res \
             --temp-path "${PACKTRANS_TEMP}" --list-file modrinth-mods.json \
             || echo "::warning::Modrinth download reported failures (missing language files are expected)"
-          clean_stale_mod_jars modrinth modrinth-mods.json
+          clean_jar_cache
 
           packtrans-glossary-builder download --platform curseforge --output res \
             --temp-path "${PACKTRANS_TEMP}" --list-file curseforge-mods.json \
             || echo "::warning::CurseForge download reported failures (missing language files are expected)"
-          clean_stale_mod_jars curseforge curseforge-mods.json
+          clean_jar_cache
 
           packtrans-glossary-builder download --platform minecraft --output res \
             --temp-path "${PACKTRANS_TEMP}"
-          clean_stale_minecraft_jars
+          clean_jar_cache
 
       - name: Build indexes and package releases
         env:
