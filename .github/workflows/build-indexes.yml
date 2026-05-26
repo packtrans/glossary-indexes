@@ -1,0 +1,93 @@
+name: Build glossary indexes
+
+on:
+  workflow_dispatch:
+  schedule:
+    # UTC 00:00 on the 1st of every month
+    - cron: "0 0 1 * *"
+
+permissions:
+  contents: write
+
+env:
+  GLOSSARY_REPO: packtrans/glossary
+  XDG_DATA_HOME: ${{ github.workspace }}/.data
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set build date (UTC)
+        id: date
+        run: echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Download latest packtrans-glossary release
+        id: glossary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh api "repos/${GLOSSARY_REPO}/releases/latest" --jq '.tag_name')"
+          asset_name="packtrans-glossary-${tag}-x86_64-unknown-linux-gnu.tar.gz"
+          asset_url="$(gh api "repos/${GLOSSARY_REPO}/releases/latest" --jq --arg name "$asset_name" '.assets[] | select(.name == $name) | .browser_download_url')"
+          if [[ -z "$asset_url" || "$asset_url" == "null" ]]; then
+            echo "Linux asset not found in latest release: $asset_name" >&2
+            exit 1
+          fi
+          curl -fsSL -o glossary.tar.gz "$asset_url"
+          tar -xzf glossary.tar.gz
+          install_dir="$(find . -maxdepth 1 -type d -name 'packtrans-glossary-*-x86_64-unknown-linux-gnu' | head -1)"
+          echo "install_dir=${install_dir}" >> "$GITHUB_OUTPUT"
+          echo "${PWD}/${install_dir}" >> "$GITHUB_PATH"
+
+      - name: Create mod lists
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: |
+          set -euo pipefail
+          packtrans-glossary-builder create-mod-list --platform modrinth --output modrinth-mods.json --count 1000
+          packtrans-glossary-builder create-mod-list --platform curseforge --output curseforge-mods.json --count 1000
+
+      - name: Download language files
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p res
+          packtrans-glossary-builder download --platform modrinth --output res --list-file modrinth-mods.json
+          packtrans-glossary-builder download --platform curseforge --output res --list-file curseforge-mods.json
+          packtrans-glossary-builder download --platform minecraft --output res
+
+      - name: Build indexes and package releases
+        env:
+          BUILD_DATE: ${{ steps.date.outputs.date }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist indexes
+          while IFS= read -r lang; do
+            packtrans-glossary-builder \
+              --index-path indexes \
+              index --scan-dir res --lang "$lang"
+            archive="dist/packtrans-glossary-index-${lang}-${BUILD_DATE}.zip"
+            (cd indexes && zip -qr "../${archive}" "$lang")
+            echo "Created ${archive}"
+          done < <(jq -r '.[]' languages.json)
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: index-${{ steps.date.outputs.date }}
+          name: Glossary indexes ${{ steps.date.outputs.date }}
+          files: dist/*.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
