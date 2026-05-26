@@ -38,7 +38,7 @@ jobs:
           set -euo pipefail
           tag="$(gh api "repos/${GLOSSARY_REPO}/releases/latest" --jq '.tag_name')"
           asset_name="packtrans-glossary-${tag}-x86_64-unknown-linux-gnu.tar.gz"
-          asset_url="$(gh api "repos/${GLOSSARY_REPO}/releases/latest" --jq --arg name "$asset_name" '.assets[] | select(.name == $name) | .browser_download_url')"
+          asset_url="$(gh api "repos/${GLOSSARY_REPO}/releases/latest" --jq ".assets[] | select(.name == \"${asset_name}\") | .browser_download_url")"
           if [[ -z "$asset_url" || "$asset_url" == "null" ]]; then
             echo "Linux asset not found in latest release: $asset_name" >&2
             exit 1
