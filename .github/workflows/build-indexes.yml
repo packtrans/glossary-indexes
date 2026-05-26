@@ -54,8 +54,7 @@ jobs:
           set -euo pipefail
           dict_args=(--dict-path "${XDG_DATA_HOME}/packtrans-glossary/dictionaries")
           while IFS= read -r lang; do
-            cli_lang="$(echo "$lang" | tr '[:upper:]' '[:lower:]')"
-            case "$cli_lang" in
+            case "$lang" in
               zh_*|lzh*)
                 packtrans-glossary "${dict_args[@]}" dict download lindera-jieba
                 ;;
@@ -94,13 +93,12 @@ jobs:
           dict_path="${XDG_DATA_HOME}/packtrans-glossary/dictionaries"
           mkdir -p dist indexes
           while IFS= read -r lang; do
-            cli_lang="$(echo "$lang" | tr '[:upper:]' '[:lower:]')"
             packtrans-glossary-builder \
               --index-path indexes \
               --dict-path "$dict_path" \
-              index --scan-dir res --lang "$cli_lang"
+              index --scan-dir res --lang "$lang"
             archive="dist/packtrans-glossary-index-${lang}-${BUILD_DATE}.zip"
-            (cd indexes && zip -qr "../${archive}" "$cli_lang")
+            (cd indexes && zip -qr "../${archive}" "$lang")
             echo "Created ${archive}"
           done < <(jq -r '.[]' languages.json)
 
