@@ -49,24 +49,6 @@ jobs:
           echo "install_dir=${install_dir}" >> "$GITHUB_OUTPUT"
           echo "${PWD}/${install_dir}" >> "$GITHUB_PATH"
 
-      - name: Download Lindera dictionaries for configured languages
-        run: |
-          set -euo pipefail
-          dict_args=(--dict-path "${XDG_DATA_HOME}/packtrans-glossary/dictionaries")
-          while IFS= read -r lang; do
-            case "$lang" in
-              zh_*|lzh*)
-                packtrans-glossary "${dict_args[@]}" dict download lindera-jieba
-                ;;
-              ja_*)
-                packtrans-glossary "${dict_args[@]}" dict download lindera-ipadic
-                ;;
-              ko_*)
-                packtrans-glossary "${dict_args[@]}" dict download lindera-ko-dic
-                ;;
-            esac
-          done < <(jq -r '.[]' languages.json)
-
       - name: Create mod lists
         env:
           CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
