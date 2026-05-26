@@ -12,6 +12,7 @@ permissions:
 env:
   GLOSSARY_REPO: packtrans/glossary
   XDG_DATA_HOME: ${{ github.workspace }}/.data
+  PACKTRANS_TEMP: ${{ github.workspace }}/.cache/packtrans-glossary
 
 jobs:
   build:
@@ -57,16 +58,76 @@ jobs:
           packtrans-glossary-builder create-mod-list --platform modrinth --output modrinth-mods.json --count 1000
           packtrans-glossary-builder create-mod-list --platform curseforge --output curseforge-mods.json --count 1000
 
+      - name: Restore mod jar cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/packtrans-glossary
+          key: mod-jars-${{ runner.os }}-v1
+          restore-keys: |
+            mod-jars-${{ runner.os }}-v1
+
       - name: Download language files
         run: |
           set -euo pipefail
-          mkdir -p res
+          mkdir -p res "${PACKTRANS_TEMP}/mods" "${PACKTRANS_TEMP}/minecraft"
+
+          clean_stale_mod_jars() {
+            local platform="$1"
+            local list_file="$2"
+            local mods_dir="${PACKTRANS_TEMP}/mods"
+            [[ -d "$mods_dir" ]] || return 0
+
+            while IFS=$'\t' read -r slug version_id; do
+              [[ -n "$slug" && -n "$version_id" ]] || continue
+              local prefix="${platform}-${slug}-"
+              local keep="${mods_dir}/${platform}-${slug}-${version_id}.jar"
+              shopt -s nullglob
+              for jar in "${mods_dir}/${prefix}"*.jar; do
+                if [[ "$jar" != "$keep" ]]; then
+                  echo "Removing stale jar: ${jar}"
+                  rm -f "$jar"
+                  rm -rf "${jar%.jar}"
+                fi
+              done
+              shopt -u nullglob
+            done < <(jq -r '.[] | [.slug, .version_id] | @tsv' "$list_file")
+          }
+
+          clean_stale_minecraft_jars() {
+            local minecraft_dir="${PACKTRANS_TEMP}/minecraft"
+            [[ -d "$minecraft_dir" ]] || return 0
+            local latest
+            latest="$(curl -fsSL https://launchermeta.mojang.com/mc/game/version_manifest_v2.json \
+              | jq -r '.latest.release')"
+            local keep="${minecraft_dir}/client-${latest}.jar"
+            shopt -s nullglob
+            for jar in "${minecraft_dir}"/client-*.jar; do
+              if [[ "$jar" != "$keep" ]]; then
+                echo "Removing stale jar: ${jar}"
+                rm -f "$jar"
+              fi
+            done
+            shopt -u nullglob
+          }
+
+          clean_stale_mod_jars modrinth modrinth-mods.json
+          clean_stale_mod_jars curseforge curseforge-mods.json
+          clean_stale_minecraft_jars
+
           # Mod downloads may exit 1 when a mod has no language files; that is expected.
-          packtrans-glossary-builder download --platform modrinth --output res --list-file modrinth-mods.json \
+          packtrans-glossary-builder download --platform modrinth --output res \
+            --temp-path "${PACKTRANS_TEMP}" --list-file modrinth-mods.json \
             || echo "::warning::Modrinth download reported failures (missing language files are expected)"
-          packtrans-glossary-builder download --platform curseforge --output res --list-file curseforge-mods.json \
+          clean_stale_mod_jars modrinth modrinth-mods.json
+
+          packtrans-glossary-builder download --platform curseforge --output res \
+            --temp-path "${PACKTRANS_TEMP}" --list-file curseforge-mods.json \
             || echo "::warning::CurseForge download reported failures (missing language files are expected)"
-          packtrans-glossary-builder download --platform minecraft --output res
+          clean_stale_mod_jars curseforge curseforge-mods.json
+
+          packtrans-glossary-builder download --platform minecraft --output res \
+            --temp-path "${PACKTRANS_TEMP}"
+          clean_stale_minecraft_jars
 
       - name: Build indexes and package releases
         env:
