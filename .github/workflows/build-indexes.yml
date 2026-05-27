@@ -169,7 +169,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: index-${{ steps.date.outputs.date }}
-          name: Glossary indexes ${{ steps.date.outputs.date }}
+          name: GLOSSARY INDEXES ${{ steps.date.outputs.date }}
           files: dist/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
