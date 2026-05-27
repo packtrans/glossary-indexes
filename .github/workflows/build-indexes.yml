@@ -12,6 +12,7 @@ permissions:
 env:
   GLOSSARY_REPO: packtrans/glossary
   XDG_DATA_HOME: ${{ github.workspace }}/.data
+  PACKTRANS_TEMP: ${{ github.workspace }}/.cache/packtrans-glossary
 
 jobs:
   build:
@@ -19,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
 
@@ -38,7 +39,7 @@ jobs:
           set -euo pipefail
           tag="$(gh api "repos/${GLOSSARY_REPO}/releases/latest" --jq '.tag_name')"
           asset_name="packtrans-glossary-${tag}-x86_64-unknown-linux-gnu.tar.gz"
-          asset_url="$(gh api "repos/${GLOSSARY_REPO}/releases/latest" --jq --arg name "$asset_name" '.assets[] | select(.name == $name) | .browser_download_url')"
+          asset_url="$(gh api "repos/${GLOSSARY_REPO}/releases/latest" --jq ".assets[] | select(.name == \"${asset_name}\") | .browser_download_url")"
           if [[ -z "$asset_url" || "$asset_url" == "null" ]]; then
             echo "Linux asset not found in latest release: $asset_name" >&2
             exit 1
@@ -57,15 +58,97 @@ jobs:
           packtrans-glossary-builder create-mod-list --platform modrinth --output modrinth-mods.json --count 1000
           packtrans-glossary-builder create-mod-list --platform curseforge --output curseforge-mods.json --count 1000
 
+      - name: Restore mod jar cache
+        uses: actions/cache@v5
+        with:
+          path: .cache/packtrans-glossary
+          key: mod-jars-${{ runner.os }}-v1
+          restore-keys: |
+            mod-jars-${{ runner.os }}-v1
+
       - name: Download language files
-        env:
-          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
         run: |
           set -euo pipefail
-          mkdir -p res
-          packtrans-glossary-builder download --platform modrinth --output res --list-file modrinth-mods.json
-          packtrans-glossary-builder download --platform curseforge --output res --list-file curseforge-mods.json
-          packtrans-glossary-builder download --platform minecraft --output res
+          mkdir -p res "${PACKTRANS_TEMP}/mods" "${PACKTRANS_TEMP}/minecraft"
+
+          clean_jar_cache() {
+            python3 <<'PY'
+          import json
+          import os
+          import shutil
+          import textwrap
+          import urllib.request
+          from pathlib import Path
+
+          exec(textwrap.dedent("""
+          PLATFORMS = ("modrinth", "curseforge")
+          temp = Path(os.environ["PACKTRANS_TEMP"])
+          mods_dir = temp / "mods"
+          minecraft_dir = temp / "minecraft"
+          mod_lists = [
+              ("modrinth", Path("modrinth-mods.json")),
+              ("curseforge", Path("curseforge-mods.json")),
+          ]
+
+          def remove_path(path: Path) -> None:
+              if path.is_dir():
+                  shutil.rmtree(path)
+              elif path.exists():
+                  path.unlink()
+              print(f"Removing stale cache: {path}")
+
+          keep_jars: set[str] = set()
+          for platform, list_path in mod_lists:
+              if not list_path.is_file():
+                  continue
+              with list_path.open(encoding="utf-8") as handle:
+                  mods = json.load(handle)
+              for mod in mods:
+                  slug = mod.get("slug")
+                  version_id = mod.get("version_id")
+                  if not slug or not version_id:
+                      continue
+                  keep_jars.add(f"{platform}-{slug}-{version_id}.jar")
+
+          if mods_dir.is_dir():
+              for jar in mods_dir.glob("*.jar"):
+                  name = jar.name
+                  if name in keep_jars:
+                      continue
+                  if any(name.startswith(f"{platform}-") for platform in PLATFORMS):
+                      remove_path(jar)
+                      remove_path(mods_dir / jar.stem)
+
+          if minecraft_dir.is_dir():
+              with urllib.request.urlopen(
+                  "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json"
+              ) as response:
+                  manifest = json.load(response)
+              latest = manifest["latest"]["release"]
+              keep_client = f"client-{latest}.jar"
+              for jar in minecraft_dir.glob("client-*.jar"):
+                  if jar.name != keep_client:
+                      remove_path(jar)
+          """))
+          PY
+          }
+
+          clean_jar_cache
+
+          # Mod downloads may exit 1 when a mod has no language files; that is expected.
+          packtrans-glossary-builder download --platform modrinth --output res \
+            --temp-path "${PACKTRANS_TEMP}" --list-file modrinth-mods.json \
+            || echo "::warning::Modrinth download reported failures (missing language files are expected)"
+          clean_jar_cache
+
+          packtrans-glossary-builder download --platform curseforge --output res \
+            --temp-path "${PACKTRANS_TEMP}" --list-file curseforge-mods.json \
+            || echo "::warning::CurseForge download reported failures (missing language files are expected)"
+          clean_jar_cache
+
+          packtrans-glossary-builder download --platform minecraft --output res \
+            --temp-path "${PACKTRANS_TEMP}"
+          clean_jar_cache
 
       - name: Build indexes and package releases
         env:
@@ -83,11 +166,10 @@ jobs:
           done < <(jq -r '.[]' languages.json)
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: index-${{ steps.date.outputs.date }}
           name: Glossary indexes ${{ steps.date.outputs.date }}
           files: dist/*.zip
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
