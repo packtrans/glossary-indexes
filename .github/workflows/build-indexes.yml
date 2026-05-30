@@ -157,9 +157,8 @@ jobs:
           set -euo pipefail
           mkdir -p dist indexes
           while IFS= read -r lang; do
-            packtrans-glossary-builder \
-              --index-path indexes \
-              index --scan-dir res --lang "$lang"
+            packtrans-glossary-builder index \
+              --scan-dir res --lang "$lang" --out indexes
             archive="dist/packtrans-glossary-index-${lang}-${BUILD_DATE}.zip"
             (cd indexes && zip -qr "../${archive}" "$lang")
             echo "Created ${archive}"
