@@ -1,0 +1,71 @@
+name: Publish glossary metadata to CDN
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish (e.g. index-20260601)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CDN_BASE_URL: https://cdn.packtrans.download
+  S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+  S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+  S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+  S3_BUCKET: ${{ secrets.S3_BUCKET }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.release.tag_name, 'index-')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Resolve release tag
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ github.event.inputs.tag }}"
+          else
+            tag="${{ github.event.release.tag_name }}"
+          fi
+          if [[ ! "$tag" =~ ^index-[0-9]{8}$ ]]; then
+            echo "Unsupported release tag: $tag (expected index-YYYYMMDD)" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.release.outputs.tag }}"
+          mkdir -p assets
+          gh release download "$tag" \
+            --repo "${{ github.repository }}" \
+            --dir assets \
+            --pattern 'packtrans-glossary-index-*.zip'
+          ls -la assets
+
+      - name: Publish indexes and metadata to S3
+        run: |
+          uv run .github/scripts/publish_glossary_metadata.py \
+            "${{ steps.release.outputs.tag }}" \
+            assets
