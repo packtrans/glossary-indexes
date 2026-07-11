@@ -31,6 +31,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
       - name: Resolve release tag
         id: release
         env:
@@ -48,11 +51,6 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq awscli
-
       - name: Download release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -68,8 +66,6 @@ jobs:
 
       - name: Publish indexes and metadata to S3
         run: |
-          set -euo pipefail
-          chmod +x .github/scripts/publish-glossary-metadata.sh
-          .github/scripts/publish-glossary-metadata.sh \
+          uv run .github/scripts/publish_glossary_metadata.py \
             "${{ steps.release.outputs.tag }}" \
             assets
