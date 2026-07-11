@@ -15,3 +15,16 @@ After the workflow is on the default branch, run it from **Actions → Build glo
 ## CI secrets
 
 The [build workflow](.github/workflows/build-indexes.yml) requires `CURSEFORGE_API_KEY` only for the CurseForge `create-mod-list` step. Language file downloads use public endpoints and do not need the key.
+
+The [CDN publish workflow](.github/workflows/publish-cdn.yml) runs after each `index-*` release is published. It uploads index (and optional dict) zip assets to S3, writes `metadata.json` for the latest three index versions, and deletes older versions from the bucket. Configure these repository secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `S3_ENDPOINT` | S3-compatible API endpoint |
+| `S3_ACCESS_KEY_ID` | S3 access key |
+| `S3_SECRET_ACCESS_KEY` | S3 secret key |
+| `S3_BUCKET` | Target bucket name |
+
+Published metadata is served at [https://cdn.packtrans.download/glossary/metadata.json](https://cdn.packtrans.download/glossary/metadata.json). Index archives are uploaded under `glossary/indexes/{version}/packtrans-glossary-index-{lang}.zip`; optional dict archives use `glossary/dicts/{version}/`.
+
+Run **Actions → Publish glossary CDN metadata → Run workflow** to rebuild metadata and backfill missing objects without creating a new release.
