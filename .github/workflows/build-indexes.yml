@@ -150,6 +150,18 @@ jobs:
             --temp-path "${PACKTRANS_TEMP}"
           clean_jar_cache
 
+      - name: Checkout CFPA language package
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch main \
+            https://github.com/CFPAOrg/Minecraft-Mod-Language-Package.git cfpa-src
+
+      - name: Extract CFPA language files
+        run: |
+          set -euo pipefail
+          mkdir -p res
+          python3 .github/scripts/extract_cfpa.py cfpa-src res
+
       - name: Build indexes and package releases
         env:
           BUILD_DATE: ${{ steps.date.outputs.date }}
