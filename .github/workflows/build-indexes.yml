@@ -169,6 +169,8 @@ jobs:
         with:
           tag_name: index-${{ steps.date.outputs.date }}
           name: Glossary Indexes ${{ steps.date.outputs.date }}
-          files: dist/*.zip
+          files: |
+            dist/*.zip
+            languages.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
