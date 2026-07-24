@@ -6,7 +6,7 @@ See [glossary](https://github.com/packtrans/glossary) for the indexer CLI source
 
 ## Configuration
 
-Target languages are listed in [`languages.json`](languages.json) using the same codes as the glossary CLI (for example `zh_cn`). The monthly workflow builds one release asset per language, named `packtrans-glossary-index-{lang}-{date}.zip` (for example `packtrans-glossary-index-zh_cn-20250526.zip`).
+Target languages are listed in [`languages.json`](languages.json) using the same codes as the glossary CLI (for example `zh_cn`). The monthly workflow builds one release asset per language, named `packtrans-glossary-index-{lang}-{date}.zip` (for example `packtrans-glossary-index-zh_cn-20250526.zip`), and also attaches `languages.json` to the release.
 
 ## Manual builds
 
