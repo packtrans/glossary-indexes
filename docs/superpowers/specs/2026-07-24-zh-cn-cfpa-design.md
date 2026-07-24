@@ -80,7 +80,7 @@ Existing mod download steps are unchanged. CFPA extraction runs **after** downlo
 
 **Duplicate modid at same latest version across namespaces:** Keep the copy with more translation keys; log a warning.
 
-**Keys:** Flat string map only (top-level JSON object or `.lang` lines). Nested JSON objects are out of scope for v1; skip or flatten-not-supported — **skip mod** if `zh_cn.json` / `en_us.json` root is not a flat object of strings.
+**Keys:** Flat string map only (top-level JSON object or `.lang` lines). Nested JSON is out of scope for v1 — **skip mod** if `en_us` / `zh_cn` JSON root is not a flat object of strings.
 
 ## Configuration
 
