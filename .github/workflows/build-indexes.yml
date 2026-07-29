@@ -55,8 +55,8 @@ jobs:
           CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
         run: |
           set -euo pipefail
-          packtrans-glossary-builder create-mod-list --platform modrinth --output modrinth-mods.json --count 1000
-          packtrans-glossary-builder create-mod-list --platform curseforge --output curseforge-mods.json --count 1000
+          packtrans-glossary builder create-mod-list --platform modrinth --output modrinth-mods.json --count 1000
+          packtrans-glossary builder create-mod-list --platform curseforge --output curseforge-mods.json --count 1000
 
       - name: Restore mod jar cache
         uses: actions/cache@v5
@@ -136,17 +136,17 @@ jobs:
           clean_jar_cache
 
           # Mod downloads may exit 1 when a mod has no language files; that is expected.
-          packtrans-glossary-builder download --platform modrinth --output res \
+          packtrans-glossary builder download --platform modrinth --output res \
             --temp-path "${PACKTRANS_TEMP}" --list-file modrinth-mods.json \
             || echo "::warning::Modrinth download reported failures (missing language files are expected)"
           clean_jar_cache
 
-          packtrans-glossary-builder download --platform curseforge --output res \
+          packtrans-glossary builder download --platform curseforge --output res \
             --temp-path "${PACKTRANS_TEMP}" --list-file curseforge-mods.json \
             || echo "::warning::CurseForge download reported failures (missing language files are expected)"
           clean_jar_cache
 
-          packtrans-glossary-builder download --platform minecraft --output res \
+          packtrans-glossary builder download --platform minecraft --output res \
             --temp-path "${PACKTRANS_TEMP}"
           clean_jar_cache
 
@@ -169,7 +169,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist indexes
           while IFS= read -r lang; do
-            packtrans-glossary-builder index \
+            packtrans-glossary builder index \
               --scan-dir res --lang "$lang" --out indexes
             archive="dist/packtrans-glossary-index-${lang}-${BUILD_DATE}.zip"
             (cd indexes && zip -qr "../${archive}" "$lang")
