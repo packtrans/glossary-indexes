@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 env:
   GLOSSARY_REPO: packtrans/glossary
@@ -186,3 +187,10 @@ jobs:
             languages.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Releases created with GITHUB_TOKEN do not trigger other workflows,
+      # so dispatch the CDN publish explicitly.
+      - name: Trigger CDN publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish-metadata.yml -f tag=index-${{ steps.date.outputs.date }}
